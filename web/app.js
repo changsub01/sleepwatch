@@ -18,6 +18,10 @@ function formatClock(date) {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
+function formatClockShort(date) {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
 function formatDayTime(date) {
   return `${date.getMonth() + 1}/${date.getDate()}(${WEEKDAYS[date.getDay()]}) ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
@@ -26,8 +30,7 @@ function formatDuration(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+  return `${pad2(h)}:${pad2(m)}`;
 }
 
 // ---------- storage ----------
@@ -222,7 +225,7 @@ async function startSession() {
   startDetection(stream);
   acquireWakeLock();
 
-  el.startTime.textContent = formatClock(state.currentSession.startTime);
+  el.startTime.textContent = formatClockShort(state.currentSession.startTime);
   el.eventCount.textContent = '감지된 이벤트: 0건';
   tickClock();
 
