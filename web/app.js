@@ -67,7 +67,6 @@ const state = {
   audioContext: null,
   analyser: null,
   detectionTimer: null,
-  clockTimer: null,
   autoStopTimer: null,
   wakeLockSentinel: null,
   lastEventAt: 0,
@@ -81,6 +80,7 @@ const el = {
   viewHistory: document.getElementById('view-history'),
   viewDetail: document.getElementById('view-detail'),
 
+  idleClock: document.getElementById('idle-clock'),
   autoStopLabel: document.getElementById('auto-stop-label'),
   autoStopMinus: document.getElementById('auto-stop-minus'),
   autoStopPlus: document.getElementById('auto-stop-plus'),
@@ -227,9 +227,7 @@ async function startSession() {
 
   el.startTime.textContent = formatClockShort(state.currentSession.startTime);
   el.eventCount.textContent = '감지된 이벤트: 0건';
-  tickClock();
-
-  state.clockTimer = setInterval(tickClock, 1000);
+  tick();
 
   if (state.autoStopHours > 0) {
     state.autoStopTimer = setTimeout(() => stopSession(), state.autoStopHours * 3600 * 1000);
@@ -238,11 +236,13 @@ async function startSession() {
   showView(el.viewMonitoring);
 }
 
-function tickClock() {
+function tick() {
   const now = new Date();
-  el.clock.textContent = formatClock(now);
   if (state.currentSession) {
+    el.clock.textContent = formatClock(now);
     el.duration.textContent = formatDuration(now - state.currentSession.startTime);
+  } else {
+    el.idleClock.textContent = formatClock(now);
   }
 }
 
@@ -253,8 +253,6 @@ function stopSession() {
   state.mediaStream?.getTracks().forEach((t) => t.stop());
   state.mediaStream = null;
 
-  clearInterval(state.clockTimer);
-  state.clockTimer = null;
   clearTimeout(state.autoStopTimer);
   state.autoStopTimer = null;
   releaseWakeLock();
@@ -273,6 +271,7 @@ function stopSession() {
 
   state.currentSession = null;
   showView(el.viewIdle);
+  tick();
 }
 
 // ---------- history / detail ----------
@@ -372,6 +371,8 @@ el.detailBackBtn.addEventListener('click', () => {
 
 renderAutoStopLabel();
 showView(el.viewIdle);
+tick();
+setInterval(tick, 1000);
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

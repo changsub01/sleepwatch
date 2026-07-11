@@ -44,6 +44,13 @@ html, body {
   margin: 0;
 }
 
+.idle-clock {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-weight: 700;
+  font-size: clamp(36px, 9vmin, 84px);
+  line-height: 1;
+}
+
 .setting-row {
   display: flex;
   flex-direction: column;
@@ -117,7 +124,7 @@ html, body {
 .clock {
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
   font-weight: 700;
-  font-size: clamp(48px, 11vw, 96px);
+  font-size: clamp(64px, 16vmin, 160px);
   line-height: 1;
 }
 
@@ -141,7 +148,7 @@ html, body {
 .stat-value {
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
   font-weight: 600;
-  font-size: clamp(32px, 7.33vw, 64px);
+  font-size: clamp(43px, 10.67vmin, 107px);
 }
 
 .event-count {
