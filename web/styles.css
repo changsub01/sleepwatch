@@ -117,7 +117,7 @@ html, body {
 .clock {
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
   font-weight: 700;
-  font-size: clamp(56px, 14vw, 140px);
+  font-size: clamp(48px, 11vw, 96px);
   line-height: 1;
 }
 
@@ -141,7 +141,7 @@ html, body {
 .stat-value {
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
   font-weight: 600;
-  font-size: clamp(28px, 6vw, 44px);
+  font-size: clamp(32px, 7.33vw, 64px);
 }
 
 .event-count {
