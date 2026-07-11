@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SleepWatch</title>
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="SleepWatch" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- 시작 화면 -->
+  <section id="view-idle" class="view">
+    <div class="idle-content">
+      <h1 class="app-title">SleepWatch</h1>
+
+      <div class="setting-row">
+        <span id="auto-stop-label" class="setting-label">8시간 후 자동 종료</span>
+        <div class="stepper">
+          <button id="auto-stop-minus" class="stepper-btn" aria-label="감소">−</button>
+          <button id="auto-stop-plus" class="stepper-btn" aria-label="증가">+</button>
+        </div>
+      </div>
+
+      <button id="start-btn" class="start-btn">시작</button>
+
+      <button id="show-history-btn" class="link-btn">기록 보기</button>
+      <p id="mic-error" class="mic-error hidden">마이크 권한이 필요합니다. Safari 설정에서 마이크 접근을 허용해주세요.</p>
+    </div>
+  </section>
+
+  <!-- 모니터링 화면 -->
+  <section id="view-monitoring" class="view hidden">
+    <div class="monitor-content">
+      <div id="clock" class="clock">00:00:00</div>
+
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-label">시작 시간</div>
+          <div id="start-time" class="stat-value">--:--:--</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">지속 시간</div>
+          <div id="duration" class="stat-value">00:00:00</div>
+        </div>
+      </div>
+
+      <div id="event-count" class="event-count">감지된 이벤트: 0건</div>
+
+      <button id="stop-btn" class="stop-btn">종료</button>
+    </div>
+  </section>
+
+  <!-- 종료 확인 다이얼로그 -->
+  <div id="stop-confirm" class="dialog-overlay hidden">
+    <div class="dialog">
+      <p>수면 기록을 종료할까요?</p>
+      <div class="dialog-actions">
+        <button id="stop-confirm-cancel" class="dialog-btn">취소</button>
+        <button id="stop-confirm-ok" class="dialog-btn dialog-btn-danger">종료</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 기록 목록 화면 -->
+  <section id="view-history" class="view hidden">
+    <header class="view-header">
+      <h2>수면 기록</h2>
+      <button id="history-close-btn" class="close-btn">닫기</button>
+    </header>
+    <ul id="history-list" class="history-list"></ul>
+    <p id="history-empty" class="empty-msg hidden">아직 기록이 없습니다</p>
+  </section>
+
+  <!-- 기록 상세 화면 -->
+  <section id="view-detail" class="view hidden">
+    <header class="view-header">
+      <h2 id="detail-title">기록 상세</h2>
+      <button id="detail-back-btn" class="close-btn">뒤로</button>
+    </header>
+    <div class="detail-summary">
+      <div><span class="detail-label">시작</span><span id="detail-start"></span></div>
+      <div><span class="detail-label">종료</span><span id="detail-end"></span></div>
+      <div><span class="detail-label">지속 시간</span><span id="detail-duration"></span></div>
+      <div><span class="detail-label">감지된 이벤트</span><span id="detail-events"></span></div>
+    </div>
+    <h3 class="timeline-heading">타임라인</h3>
+    <ul id="detail-timeline" class="timeline-list"></ul>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

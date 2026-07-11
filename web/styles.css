@@ -1,0 +1,300 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.view {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+}
+
+/* Idle */
+#view-idle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.idle-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: 24px;
+}
+
+.app-title {
+  font-size: 40px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.setting-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.setting-label {
+  color: #aaa;
+  font-size: 17px;
+}
+
+.stepper {
+  display: flex;
+  gap: 16px;
+}
+
+.stepper-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid #444;
+  background: #111;
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.start-btn {
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  border: none;
+  background: #0a84ff;
+  color: #fff;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #0a84ff;
+  font-size: 18px;
+  padding: 8px;
+}
+
+.mic-error {
+  color: #ff453a;
+  font-size: 15px;
+  max-width: 280px;
+  text-align: center;
+}
+
+/* Monitoring */
+#view-monitoring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.monitor-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+  padding: 24px;
+  width: 100%;
+}
+
+.clock {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-weight: 700;
+  font-size: clamp(56px, 14vw, 140px);
+  line-height: 1;
+}
+
+.stats-row {
+  display: flex;
+  gap: 60px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-label {
+  color: #aaa;
+  font-size: 18px;
+}
+
+.stat-value {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-weight: 600;
+  font-size: clamp(28px, 6vw, 44px);
+}
+
+.event-count {
+  color: #aaa;
+  font-size: 15px;
+}
+
+.stop-btn {
+  width: 160px;
+  height: 60px;
+  border-radius: 30px;
+  border: none;
+  background: #ff453a;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Dialog */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.dialog {
+  background: #1c1c1e;
+  border-radius: 14px;
+  padding: 24px;
+  width: 260px;
+  text-align: center;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.dialog-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: #2c2c2e;
+  color: #fff;
+  font-size: 16px;
+}
+
+.dialog-btn-danger {
+  background: #ff453a;
+}
+
+/* History / Detail */
+.view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border-bottom: 1px solid #222;
+}
+
+.view-header h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #0a84ff;
+  font-size: 17px;
+}
+
+.history-list, .timeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-list li {
+  padding: 16px 20px;
+  border-bottom: 1px solid #1c1c1e;
+}
+
+.history-date {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.history-meta {
+  color: #aaa;
+  font-size: 14px;
+  margin-top: 4px;
+  display: flex;
+  gap: 10px;
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+}
+
+.empty-msg {
+  color: #888;
+  text-align: center;
+  margin-top: 40px;
+}
+
+.detail-summary {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid #222;
+}
+
+.detail-summary > div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.detail-label {
+  color: #aaa;
+}
+
+.timeline-heading {
+  padding: 16px 20px 0;
+  margin: 0;
+  font-size: 17px;
+  color: #aaa;
+}
+
+.timeline-list li {
+  padding: 12px 20px;
+  border-bottom: 1px solid #1c1c1e;
+}
+
+.timeline-range {
+  font-weight: 600;
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 14px;
+}
+
+.timeline-empty {
+  color: #666;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.timeline-event {
+  color: #aaa;
+  font-size: 13px;
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  margin-top: 4px;
+}
