@@ -7,6 +7,8 @@ const THRESHOLD_DB = -30;
 const DEBOUNCE_MS = 5000;
 const BRIGHTNESS_DRAG_RANGE_PX = 300; // full-width drag = full brightness range
 const MAX_DIM_OPACITY = 0.85; // never fully black, always keep the clock legible
+const WAKE_LOCK_RECHECK_MS = 30 * 1000; // Safari's Wake Lock can silently drop over a long
+                                         // night, so periodically verify it and re-acquire
 
 const RECORDING_SEGMENT_MS = 60 * 1000; // stop/restart the recorder every minute so each
                                          // chunk is an independently playable audio file
@@ -172,6 +174,7 @@ const state = {
   detectionTimer: null,
   autoStopTimer: null,
   wakeLockSentinel: null,
+  wakeLockTimer: null,
   lastEventAt: 0,
   recorder: null,
   recorderMimeType: null,
@@ -263,6 +266,11 @@ async function acquireWakeLock() {
   if (!('wakeLock' in navigator)) return;
   try {
     state.wakeLockSentinel = await navigator.wakeLock.request('screen');
+    state.wakeLockSentinel.addEventListener('release', () => {
+      // Fires both when we release it ourselves and when the system drops it
+      // out from under us — either way, forget the stale sentinel.
+      state.wakeLockSentinel = null;
+    });
   } catch {
     // ignore — not fatal, screen may just dim over time
   }
@@ -271,6 +279,17 @@ async function acquireWakeLock() {
 function releaseWakeLock() {
   state.wakeLockSentinel?.release().catch(() => {});
   state.wakeLockSentinel = null;
+}
+
+function startWakeLockWatchdog() {
+  state.wakeLockTimer = setInterval(() => {
+    if (!state.wakeLockSentinel) acquireWakeLock();
+  }, WAKE_LOCK_RECHECK_MS);
+}
+
+function stopWakeLockWatchdog() {
+  clearInterval(state.wakeLockTimer);
+  state.wakeLockTimer = null;
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -477,6 +496,7 @@ async function startSession() {
   startDetection(stream);
   startRecording(stream);
   acquireWakeLock();
+  startWakeLockWatchdog();
 
   el.startTime.textContent = formatClockShort(state.currentSession.startTime);
   el.eventCount.textContent = '감지된 이벤트: 0건';
@@ -509,6 +529,7 @@ function stopSession() {
 
   clearTimeout(state.autoStopTimer);
   state.autoStopTimer = null;
+  stopWakeLockWatchdog();
   releaseWakeLock();
 
   const session = state.currentSession;
