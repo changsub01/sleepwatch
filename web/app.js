@@ -6,6 +6,7 @@ const BRIGHTNESS_KEY = 'sleepwatch.brightness';
 const THRESHOLD_DB = -30;
 const DEBOUNCE_MS = 5000;
 const BRIGHTNESS_DRAG_RANGE_PX = 300; // full-width drag = full brightness range
+const BRIGHTNESS_STEP = 0.05; // snap brightness to 5% increments
 const BRIGHTNESS_HUD_HIDE_DELAY_MS = 900; // how long the % readout lingers after the last change
 const MAX_DIM_OPACITY = 0.925; // never fully black, always keep the clock legible
 const WAKE_LOCK_RECHECK_MS = 30 * 1000; // Safari's Wake Lock can silently drop over a long
@@ -315,7 +316,8 @@ function applyBrightness() {
 }
 
 function setBrightness(value) {
-  state.brightness = Math.min(1, Math.max(0, value));
+  const clamped = Math.min(1, Math.max(0, value));
+  state.brightness = Math.round(clamped / BRIGHTNESS_STEP) * BRIGHTNESS_STEP;
   saveBrightness(state.brightness);
   applyBrightness();
   showBrightnessHud();
