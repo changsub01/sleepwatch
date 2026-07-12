@@ -20,6 +20,7 @@ const RECORDING_MIME_CANDIDATES = [
 
 const AUDIO_DB_NAME = 'sleepwatch-audio';
 const AUDIO_STORE = 'clips';
+const WAVEFORM_BARS = 120;
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -172,6 +173,8 @@ const state = {
   segmentTimer: null,
   currentSegment: null,
   audioObjectUrls: [],
+  waveformAudioContext: null,
+  currentPeaks: null,
 };
 
 // ---------- DOM ----------
@@ -218,6 +221,7 @@ const el = {
   detailEventList: document.getElementById('detail-event-list'),
   detailPlayer: document.getElementById('detail-player'),
   detailPlayerStatus: document.getElementById('detail-player-status'),
+  detailWaveform: document.getElementById('detail-waveform'),
 };
 
 // ---------- view switching ----------
@@ -560,6 +564,99 @@ function renderHistory() {
   }
 }
 
+// ---------- waveform (rough amplitude preview of the currently-loaded clip) ----------
+
+function getWaveformAudioContext() {
+  if (!state.waveformAudioContext) {
+    state.waveformAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return state.waveformAudioContext;
+}
+
+function computePeaks(audioBuffer, bars) {
+  const data = audioBuffer.getChannelData(0);
+  const samplesPerBar = Math.max(1, Math.floor(data.length / bars));
+  const peaks = [];
+  for (let i = 0; i < bars; i++) {
+    const start = i * samplesPerBar;
+    const end = Math.min(data.length, start + samplesPerBar);
+    let max = 0;
+    for (let j = start; j < end; j++) {
+      const v = Math.abs(data[j]);
+      if (v > max) max = v;
+    }
+    peaks.push(max);
+  }
+  return peaks;
+}
+
+async function decodePeaks(blob) {
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await getWaveformAudioContext().decodeAudioData(arrayBuffer);
+    return computePeaks(audioBuffer, WAVEFORM_BARS);
+  } catch {
+    return null; // decoding unsupported for this format/blob — waveform is a bonus, not core
+  }
+}
+
+function drawWaveform(peaks, progress) {
+  const canvas = el.detailWaveform;
+  const ctx2d = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 300;
+  const height = canvas.clientHeight || 60;
+  if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+  }
+  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx2d.clearRect(0, 0, width, height);
+
+  if (!peaks) {
+    ctx2d.strokeStyle = '#333';
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, height / 2);
+    ctx2d.lineTo(width, height / 2);
+    ctx2d.stroke();
+    return;
+  }
+
+  const peakMax = Math.max(...peaks, 0.01); // normalize so quiet clips still show visible bars
+  const barWidth = width / peaks.length;
+  ctx2d.fillStyle = '#0a84ff';
+  peaks.forEach((peak, i) => {
+    const barHeight = Math.max(2, (peak / peakMax) * height);
+    const x = i * barWidth;
+    ctx2d.fillRect(x, (height - barHeight) / 2, Math.max(1, barWidth - 1), barHeight);
+  });
+
+  if (progress != null) {
+    const x = Math.min(width, Math.max(0, progress * width));
+    ctx2d.strokeStyle = '#fff';
+    ctx2d.lineWidth = 2;
+    ctx2d.beginPath();
+    ctx2d.moveTo(x, 0);
+    ctx2d.lineTo(x, height);
+    ctx2d.stroke();
+  }
+}
+
+el.detailPlayer.addEventListener('timeupdate', () => {
+  const duration = el.detailPlayer.duration;
+  if (!state.currentPeaks || !isFinite(duration) || duration <= 0) return;
+  drawWaveform(state.currentPeaks, el.detailPlayer.currentTime / duration);
+});
+
+el.detailWaveform.addEventListener('click', (e) => {
+  const duration = el.detailPlayer.duration;
+  if (!isFinite(duration) || duration <= 0) return;
+  const rect = el.detailWaveform.getBoundingClientRect();
+  const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  el.detailPlayer.currentTime = frac * duration;
+  el.detailPlayer.play().catch(() => {});
+});
+
 function findClipAt(clips, time) {
   const t = time.getTime();
   return clips.find((c) => t >= new Date(c.startTime).getTime() && t < new Date(c.endTime).getTime());
@@ -571,6 +668,8 @@ function playClipAt(clips, eventTime) {
     el.detailPlayerStatus.textContent = `${formatClock(eventTime)} — 저장된 녹음이 없습니다`;
     el.detailPlayer.classList.add('hidden');
     el.detailPlayer.removeAttribute('src');
+    el.detailWaveform.classList.add('hidden');
+    state.currentPeaks = null;
     return;
   }
 
@@ -585,6 +684,16 @@ function playClipAt(clips, eventTime) {
   el.detailPlayer.src = url;
   el.detailPlayer.classList.remove('hidden');
   el.detailPlayerStatus.textContent = `${formatClock(eventTime)} 부근 재생 중`;
+
+  state.currentPeaks = null;
+  el.detailWaveform.classList.remove('hidden');
+  drawWaveform(null, 0); // flat placeholder while decoding
+  decodePeaks(clip.blob).then((peaks) => {
+    state.currentPeaks = peaks;
+    const duration = el.detailPlayer.duration;
+    const progress = isFinite(duration) && duration > 0 ? el.detailPlayer.currentTime / duration : 0;
+    drawWaveform(peaks, progress);
+  });
 }
 
 // 타임라인의 점과 이벤트 시각 칩은 같은 이벤트를 가리키므로, 하나를 선택하면
@@ -618,6 +727,8 @@ async function showDetail(session) {
   el.detailPlayer.classList.add('hidden');
   el.detailPlayer.removeAttribute('src');
   el.detailPlayerStatus.textContent = '타임라인의 점이나 시각을 탭하면 그 지점부터 재생됩니다';
+  el.detailWaveform.classList.add('hidden');
+  state.currentPeaks = null;
 
   showView(el.viewDetail);
 
