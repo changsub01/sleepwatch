@@ -376,3 +376,31 @@ html, body {
   background: none !important;
   padding: 0 !important;
 }
+
+.audio-list {
+  list-style: none;
+  margin: 0;
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.audio-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.audio-time {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  color: #aaa;
+  flex-shrink: 0;
+  width: 44px;
+}
+
+.audio-item audio {
+  flex: 1;
+  height: 32px;
+}

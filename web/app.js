@@ -8,6 +8,19 @@ const DEBOUNCE_MS = 5000;
 const BRIGHTNESS_DRAG_RANGE_PX = 300; // full-width drag = full brightness range
 const MAX_DIM_OPACITY = 0.85; // never fully black, always keep the clock legible
 
+const RECORDING_SEGMENT_MS = 60 * 1000; // stop/restart the recorder every minute so each
+                                         // chunk is an independently playable audio file
+const RECORDING_BITRATE = 32000; // voice-quality bitrate keeps overnight storage manageable
+const RECORDING_MIME_CANDIDATES = [
+  'audio/mp4',
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/ogg',
+];
+
+const AUDIO_DB_NAME = 'sleepwatch-audio';
+const AUDIO_STORE = 'clips';
+
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
 // ---------- formatting ----------
@@ -70,6 +83,77 @@ function saveBrightness(value) {
   localStorage.setItem(BRIGHTNESS_KEY, String(value));
 }
 
+// ---------- audio clip storage (IndexedDB — localStorage can't hold binary blobs) ----------
+
+function openAudioDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(AUDIO_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(AUDIO_STORE)) {
+        const store = db.createObjectStore(AUDIO_STORE, { keyPath: 'id' });
+        store.createIndex('sessionId', 'sessionId', { unique: false });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function txDone(tx) {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function saveAudioClip(sessionId, start, end, blob) {
+  try {
+    const db = await openAudioDB();
+    const tx = db.transaction(AUDIO_STORE, 'readwrite');
+    tx.objectStore(AUDIO_STORE).put({
+      id: `${sessionId}-${start.getTime()}`,
+      sessionId,
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      blob,
+    });
+    await txDone(tx);
+  } catch {
+    // storage full or unsupported — audio is a bonus on top of the event markers, not core
+  }
+}
+
+async function getAudioClips(sessionId) {
+  try {
+    const db = await openAudioDB();
+    const tx = db.transaction(AUDIO_STORE, 'readonly');
+    const req = tx.objectStore(AUDIO_STORE).index('sessionId').getAll(sessionId);
+    const clips = await new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return clips.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+  } catch {
+    return [];
+  }
+}
+
+async function deleteAudioClips(sessionId) {
+  try {
+    const db = await openAudioDB();
+    const tx = db.transaction(AUDIO_STORE, 'readwrite');
+    const store = tx.objectStore(AUDIO_STORE);
+    const req = store.index('sessionId').getAllKeys(sessionId);
+    req.onsuccess = () => {
+      for (const key of req.result) store.delete(key);
+    };
+    await txDone(tx);
+  } catch {
+    // ignore
+  }
+}
+
 // ---------- state ----------
 
 const state = {
@@ -83,6 +167,11 @@ const state = {
   autoStopTimer: null,
   wakeLockSentinel: null,
   lastEventAt: 0,
+  recorder: null,
+  recorderMimeType: null,
+  segmentTimer: null,
+  segmentHasSound: false,
+  audioObjectUrls: [],
 };
 
 // ---------- DOM ----------
@@ -127,6 +216,7 @@ const el = {
   timelineEndLabel: document.getElementById('timeline-end-label'),
   timelineTrack: document.getElementById('timeline-track'),
   detailEventList: document.getElementById('detail-event-list'),
+  detailAudioList: document.getElementById('detail-audio-list'),
 };
 
 // ---------- view switching ----------
@@ -255,6 +345,8 @@ function startDetection(stream) {
 
     if (decibels <= THRESHOLD_DB) return;
 
+    state.segmentHasSound = true;
+
     const now = Date.now();
     if (now - state.lastEventAt < DEBOUNCE_MS) return;
     state.lastEventAt = now;
@@ -272,6 +364,71 @@ function stopDetection() {
   state.audioContext?.close().catch(() => {});
   state.audioContext = null;
   state.analyser = null;
+}
+
+// ---------- recording (1-minute chunks; segments with no detected sound are discarded) ----------
+
+function pickRecordingMimeType() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  return RECORDING_MIME_CANDIDATES.find((type) => MediaRecorder.isTypeSupported(type)) || null;
+}
+
+function startSegment(stream) {
+  if (!state.recorderMimeType) return;
+
+  const sessionId = state.currentSession.id;
+  const segmentStart = new Date();
+  const chunks = [];
+  state.segmentHasSound = false;
+
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, {
+      mimeType: state.recorderMimeType,
+      audioBitsPerSecond: RECORDING_BITRATE,
+    });
+  } catch {
+    state.recorder = null;
+    return;
+  }
+
+  recorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) chunks.push(e.data);
+  };
+  recorder.onstop = () => {
+    const segmentEnd = new Date();
+    if (state.segmentHasSound && chunks.length > 0) {
+      const blob = new Blob(chunks, { type: state.recorderMimeType });
+      saveAudioClip(sessionId, segmentStart, segmentEnd, blob);
+    }
+  };
+
+  recorder.start();
+  state.recorder = recorder;
+}
+
+function rolloverSegment(stream) {
+  if (state.recorder && state.recorder.state !== 'inactive') {
+    state.recorder.stop();
+  }
+  startSegment(stream);
+}
+
+function startRecording(stream) {
+  state.recorderMimeType = pickRecordingMimeType();
+  if (!state.recorderMimeType) return; // recording unsupported on this browser — event markers still work
+
+  startSegment(stream);
+  state.segmentTimer = setInterval(() => rolloverSegment(stream), RECORDING_SEGMENT_MS);
+}
+
+function stopRecording() {
+  clearInterval(state.segmentTimer);
+  state.segmentTimer = null;
+  if (state.recorder && state.recorder.state !== 'inactive') {
+    state.recorder.stop();
+  }
+  state.recorder = null;
 }
 
 // ---------- session lifecycle ----------
@@ -296,6 +453,7 @@ async function startSession() {
   };
 
   startDetection(stream);
+  startRecording(stream);
   acquireWakeLock();
 
   el.startTime.textContent = formatClockShort(state.currentSession.startTime);
@@ -323,6 +481,7 @@ function stopSession() {
   if (!state.currentSession) return;
 
   stopDetection();
+  stopRecording();
   state.mediaStream?.getTracks().forEach((t) => t.stop());
   state.mediaStream = null;
 
@@ -352,6 +511,7 @@ function stopSession() {
 function deleteSession(id) {
   if (!confirm('이 기록을 삭제할까요?')) return;
   saveSessions(loadSessions().filter((s) => s.id !== id));
+  deleteAudioClips(id);
   renderHistory();
 }
 
@@ -393,7 +553,7 @@ function renderHistory() {
   }
 }
 
-function showDetail(session) {
+async function showDetail(session) {
   const start = new Date(session.startTime);
   const end = new Date(session.endTime);
   const totalMs = Math.max(1, end - start);
@@ -438,6 +598,38 @@ function showDetail(session) {
   }
 
   showView(el.viewDetail);
+
+  for (const url of state.audioObjectUrls) URL.revokeObjectURL(url);
+  state.audioObjectUrls = [];
+
+  el.detailAudioList.innerHTML = '';
+  const clips = await getAudioClips(session.id);
+  if (clips.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'event-list-empty';
+    li.textContent = '저장된 녹음 없음';
+    el.detailAudioList.appendChild(li);
+    return;
+  }
+  for (const clip of clips) {
+    const url = URL.createObjectURL(clip.blob);
+    state.audioObjectUrls.push(url);
+
+    const li = document.createElement('li');
+    li.className = 'audio-item';
+
+    const label = document.createElement('span');
+    label.className = 'audio-time';
+    label.textContent = formatClockShort(new Date(clip.startTime));
+
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.src = url;
+    audio.preload = 'none';
+
+    li.append(label, audio);
+    el.detailAudioList.appendChild(li);
+  }
 }
 
 // ---------- wiring ----------
