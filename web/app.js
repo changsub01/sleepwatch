@@ -189,6 +189,7 @@ const state = {
   detailClips: null,
   detailStart: null,
   detailTotalMs: null,
+  currentClipStart: null,
 };
 
 // ---------- DOM ----------
@@ -242,6 +243,7 @@ const el = {
   detailPlayer: document.getElementById('detail-player'),
   detailPlayerStatus: document.getElementById('detail-player-status'),
   detailWaveform: document.getElementById('detail-waveform'),
+  detailNextBtn: document.getElementById('detail-next-btn'),
 };
 
 // ---------- view switching ----------
@@ -754,6 +756,9 @@ el.detailPlayer.addEventListener('timeupdate', () => {
   drawWaveform(state.currentPeaks, el.detailPlayer.currentTime / duration);
 });
 
+el.detailPlayer.addEventListener('ended', playNextClip);
+el.detailNextBtn.addEventListener('click', playNextClip);
+
 el.detailWaveform.addEventListener('click', (e) => {
   const duration = el.detailPlayer.duration;
   if (!isFinite(duration) || duration <= 0) return;
@@ -784,6 +789,19 @@ function findClipAt(clips, time) {
   return clips.find((c) => t >= new Date(c.startTime).getTime() && t < new Date(c.endTime).getTime());
 }
 
+function playNextClip() {
+  const clips = state.detailClips;
+  if (!clips || !state.currentClipStart) return;
+
+  const index = clips.findIndex((c) => c.startTime === state.currentClipStart);
+  if (index === -1 || index + 1 >= clips.length) {
+    el.detailPlayerStatus.textContent = '다음 녹음이 없습니다';
+    return;
+  }
+
+  playClipAt(clips, new Date(clips[index + 1].startTime));
+}
+
 function playClipAt(clips, eventTime) {
   const clip = findClipAt(clips, eventTime);
   if (!clip) {
@@ -791,9 +809,16 @@ function playClipAt(clips, eventTime) {
     el.detailPlayer.classList.add('hidden');
     el.detailPlayer.removeAttribute('src');
     el.detailWaveform.classList.add('hidden');
+    el.detailNextBtn.classList.add('hidden');
     state.currentPeaks = null;
+    state.currentClipStart = null;
     return;
   }
+
+  state.currentClipStart = clip.startTime;
+  const clipIndex = clips.indexOf(clip);
+  el.detailNextBtn.classList.remove('hidden');
+  el.detailNextBtn.disabled = clipIndex === -1 || clipIndex + 1 >= clips.length;
 
   const url = URL.createObjectURL(clip.blob);
   state.audioObjectUrls.push(url);
@@ -850,7 +875,9 @@ async function showDetail(session) {
   el.detailPlayer.removeAttribute('src');
   el.detailPlayerStatus.textContent = '타임라인을 탭하면 그 지점부터 재생됩니다';
   el.detailWaveform.classList.add('hidden');
+  el.detailNextBtn.classList.add('hidden');
   state.currentPeaks = null;
+  state.currentClipStart = null;
 
   showView(el.viewDetail);
 
@@ -859,10 +886,23 @@ async function showDetail(session) {
   state.detailStart = start;
   state.detailTotalMs = totalMs;
 
-  // 소리가 감지되지 않은 구간은 단순한 기준선으로, 감지된 이벤트는 그 위의 점으로 표시.
+  // 소리가 감지되지 않은 구간은 어두운 기준선으로, 녹음이 저장된 구간은 밝은 선으로
+  // 구분해서 어디를 탭하면 재생되는지 한눈에 보이게 하고, 감지된 이벤트는 그 위의 점으로 표시.
   // 점이나 시각 칩을 탭하면 그 순간이 포함된 1분짜리 녹음 클립을 그 지점부터 재생하고,
   // 점이 없는 구간(연속된 소리로 새 이벤트가 억제된 구간 포함)도 선을 직접 탭하면 재생된다.
   el.timelineTrack.innerHTML = '<div class="timeline-baseline"></div>';
+  for (const clip of clips) {
+    const clipStart = new Date(clip.startTime).getTime();
+    const clipEnd = new Date(clip.endTime).getTime();
+    const leftPct = Math.min(100, Math.max(0, ((clipStart - start.getTime()) / totalMs) * 100));
+    const widthPct = Math.min(100 - leftPct, Math.max(0, ((clipEnd - clipStart) / totalMs) * 100));
+
+    const segment = document.createElement('div');
+    segment.className = 'timeline-data-segment';
+    segment.style.left = `${leftPct}%`;
+    segment.style.width = `${widthPct}%`;
+    el.timelineTrack.appendChild(segment);
+  }
   const sortedEvents = [...session.events].sort(
     (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
   );

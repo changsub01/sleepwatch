@@ -393,6 +393,15 @@ html, body {
   transform: translateY(-50%);
 }
 
+.timeline-data-segment {
+  position: absolute;
+  top: 50%;
+  height: 4px;
+  background: #8e8e93;
+  border-radius: 2px;
+  transform: translateY(-50%);
+}
+
 .timeline-marker {
   position: absolute;
   top: 50%;
@@ -480,4 +489,20 @@ html, body {
 .detail-player {
   width: 100%;
   height: 40px;
+}
+
+.next-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: #2c2c2e;
+  color: #fff;
+  font-size: 15px;
+}
+
+.next-btn:disabled {
+  opacity: 0.4;
 }
