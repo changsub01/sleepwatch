@@ -237,6 +237,7 @@ function showView(view) {
     v.classList.add('hidden');
   }
   view.classList.remove('hidden');
+  applyBrightness();
 }
 
 function renderAutoStopLabel() {
@@ -281,7 +282,11 @@ document.addEventListener('visibilitychange', () => {
 // ---------- brightness (dimming overlay — cannot control real backlight from a web page) ----------
 
 function applyBrightness() {
-  el.brightnessOverlay.style.opacity = String((1 - state.brightness) * MAX_DIM_OPACITY);
+  // 기록 목록/상세 화면을 볼 때는 내용을 읽어야 하므로 어둡게 하지 않고,
+  // 시계가 보이는 시작 화면과 모니터링 화면에서만 밝기 조절을 적용한다.
+  const onDimmableView = !el.viewIdle.classList.contains('hidden') || !el.viewMonitoring.classList.contains('hidden');
+  const opacity = onDimmableView ? (1 - state.brightness) * MAX_DIM_OPACITY : 0;
+  el.brightnessOverlay.style.opacity = String(opacity);
 }
 
 function setBrightness(value) {
@@ -803,7 +808,6 @@ el.detailBackBtn.addEventListener('click', () => {
 // ---------- init ----------
 
 renderAutoStopLabel();
-applyBrightness();
 showView(el.viewIdle);
 tick();
 setInterval(tick, 1000);
