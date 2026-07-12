@@ -246,18 +246,22 @@ html, body {
 
 .dialog-actions {
   display: flex;
+  flex-direction: column;
   gap: 12px;
   margin-top: 20px;
 }
 
 .dialog-btn {
-  flex: 1;
   padding: 12px;
   border-radius: 8px;
   border: none;
   background: #2c2c2e;
   color: #fff;
   font-size: var(--stop-btn-font-size);
+}
+
+.dialog-btn-primary {
+  background: #0a84ff;
 }
 
 .dialog-btn-danger {

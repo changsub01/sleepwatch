@@ -219,6 +219,7 @@ const el = {
 
   stopConfirm: document.getElementById('stop-confirm'),
   stopConfirmCancel: document.getElementById('stop-confirm-cancel'),
+  stopConfirmDiscard: document.getElementById('stop-confirm-discard'),
   stopConfirmOk: document.getElementById('stop-confirm-ok'),
 
   historyCloseBtn: document.getElementById('history-close-btn'),
@@ -428,12 +429,22 @@ async function analyzeSegment(sessionId, segmentStart, segmentEnd, blob) {
     return; // couldn't decode — nothing to keep
   }
 
-  const events = findSoundEvents(audioBuffer, segmentStart);
-  if (events.length === 0) return; // silent minute — discard the clip entirely
+  const detectedEvents = findSoundEvents(audioBuffer, segmentStart);
+  const hasSound = detectedEvents.length > 0;
 
-  if (state.currentSession && state.currentSession.id === sessionId) {
-    state.currentSession.events.push(...events);
-    el.eventCount.textContent = `감지된 이벤트: ${state.currentSession.events.length}건`;
+  const session = state.currentSession;
+  const isCurrentSession = session && session.id === sessionId;
+
+  // 직전 1분에 이미 소리가 있었다면 지금도 같은 소리가 이어지는 것으로 보고
+  // 새 이벤트는 만들지 않는다 (녹음 자체는 계속 저장해서 이어들을 수 있게 한다).
+  const suppressNewEvents = isCurrentSession && session.previousSegmentHadSound;
+  if (isCurrentSession) session.previousSegmentHadSound = hasSound;
+
+  if (!hasSound) return; // silent minute — discard the clip entirely
+
+  if (!suppressNewEvents && isCurrentSession) {
+    session.events.push(...detectedEvents);
+    el.eventCount.textContent = `감지된 이벤트: ${session.events.length}건`;
   }
 
   await saveAudioClip(sessionId, segmentStart, segmentEnd, blob);
@@ -532,6 +543,7 @@ async function startSession() {
     id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
     startTime: new Date(),
     events: [],
+    previousSegmentHadSound: false, // in-memory bookkeeping only, not persisted with the session
   };
 
   startRecording(stream);
@@ -559,14 +571,11 @@ function tick() {
   }
 }
 
-async function stopSession() {
-  if (!state.currentSession) return;
-
-  const session = state.currentSession;
-  const endTime = new Date();
-
-  // Wait for the in-flight final segment's decode/analysis so its events
-  // (and clip, if any) make it into this session before it's saved below.
+// Stops the recorder/wake lock/timers shared by both a normal stop and a
+// discard. Waits for the in-flight final segment's decode/analysis so its
+// events (and clip, if any) are settled before the caller decides what to
+// do with them.
+async function finalizeRecording() {
   await stopRecording();
   state.mediaStream?.getTracks().forEach((t) => t.stop());
   state.mediaStream = null;
@@ -575,6 +584,15 @@ async function stopSession() {
   state.autoStopTimer = null;
   stopWakeLockWatchdog();
   releaseWakeLock();
+}
+
+async function stopSession() {
+  if (!state.currentSession) return;
+
+  const session = state.currentSession;
+  const endTime = new Date();
+
+  await finalizeRecording();
 
   const sessions = loadSessions();
   sessions.push({
@@ -584,6 +602,18 @@ async function stopSession() {
     events: session.events,
   });
   saveSessions(sessions);
+
+  state.currentSession = null;
+  showView(el.viewIdle);
+  tick();
+}
+
+async function discardSession() {
+  if (!state.currentSession) return;
+
+  const session = state.currentSession;
+  await finalizeRecording();
+  deleteAudioClips(session.id); // clean up any clips already saved mid-session
 
   state.currentSession = null;
   showView(el.viewIdle);
@@ -851,6 +881,10 @@ el.stopBtn.addEventListener('click', () => {
 });
 el.stopConfirmCancel.addEventListener('click', () => {
   el.stopConfirm.classList.add('hidden');
+});
+el.stopConfirmDiscard.addEventListener('click', () => {
+  el.stopConfirm.classList.add('hidden');
+  discardSession();
 });
 el.stopConfirmOk.addEventListener('click', () => {
   el.stopConfirm.classList.add('hidden');
