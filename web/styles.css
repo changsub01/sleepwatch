@@ -2,6 +2,10 @@
   box-sizing: border-box;
 }
 
+:root {
+  --stop-btn-font-size: 30px; /* shared so the confirm dialog always matches the 종료 button */
+}
+
 html, body {
   margin: 0;
   height: 100%;
@@ -24,6 +28,22 @@ html, body {
   opacity: 0;
   pointer-events: none;
   z-index: 9999;
+}
+
+.brightness-hud {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 64px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 20px 32px;
+  border-radius: 16px;
+  pointer-events: none;
+  z-index: 10000; /* above the dimming overlay so it's always fully legible */
 }
 
 .view {
@@ -73,7 +93,7 @@ html, body {
 .idle-clock {
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
   font-weight: 700;
-  font-size: clamp(36px, 9vmin, 84px);
+  font-size: clamp(72px, 18vmin, 168px);
   line-height: 1;
   touch-action: none;
   cursor: ew-resize;
@@ -153,7 +173,7 @@ html, body {
 .clock {
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
   font-weight: 700;
-  font-size: clamp(64px, 16vmin, 160px);
+  font-size: clamp(77px, 19.2vmin, 192px);
   line-height: 1;
   touch-action: none;
   cursor: ew-resize;
@@ -161,7 +181,9 @@ html, body {
 
 .stats-row {
   display: flex;
-  gap: 60px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px 60px;
 }
 
 .stat {
@@ -179,7 +201,7 @@ html, body {
 .stat-value {
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
   font-weight: 600;
-  font-size: clamp(43px, 10.67vmin, 107px);
+  font-size: clamp(64.5px, 16vmin, 160.5px);
 }
 
 .event-count {
@@ -194,7 +216,7 @@ html, body {
   border: none;
   background: #ff453a;
   color: #fff;
-  font-size: 20px;
+  font-size: var(--stop-btn-font-size);
   font-weight: 700;
 }
 
@@ -213,8 +235,13 @@ html, body {
   background: #1c1c1e;
   border-radius: 14px;
   padding: 24px;
-  width: 260px;
+  width: min(320px, 90vw);
   text-align: center;
+}
+
+.dialog p {
+  font-size: var(--stop-btn-font-size);
+  margin: 0;
 }
 
 .dialog-actions {
@@ -230,7 +257,7 @@ html, body {
   border: none;
   background: #2c2c2e;
   color: #fff;
-  font-size: 16px;
+  font-size: var(--stop-btn-font-size);
 }
 
 .dialog-btn-danger {

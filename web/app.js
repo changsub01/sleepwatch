@@ -6,6 +6,7 @@ const BRIGHTNESS_KEY = 'sleepwatch.brightness';
 const THRESHOLD_DB = -30;
 const DEBOUNCE_MS = 5000;
 const BRIGHTNESS_DRAG_RANGE_PX = 300; // full-width drag = full brightness range
+const BRIGHTNESS_HUD_HIDE_DELAY_MS = 900; // how long the % readout lingers after the last change
 const MAX_DIM_OPACITY = 0.925; // never fully black, always keep the clock legible
 const WAKE_LOCK_RECHECK_MS = 30 * 1000; // Safari's Wake Lock can silently drop over a long
                                          // night, so periodically verify it and re-acquire
@@ -183,12 +184,14 @@ const state = {
   audioObjectUrls: [],
   waveformAudioContext: null,
   currentPeaks: null,
+  brightnessHudTimer: null,
 };
 
 // ---------- DOM ----------
 
 const el = {
   brightnessOverlay: document.getElementById('brightness-overlay'),
+  brightnessHud: document.getElementById('brightness-hud'),
 
   viewIdle: document.getElementById('view-idle'),
   viewMonitoring: document.getElementById('view-monitoring'),
@@ -315,6 +318,16 @@ function setBrightness(value) {
   state.brightness = Math.min(1, Math.max(0, value));
   saveBrightness(state.brightness);
   applyBrightness();
+  showBrightnessHud();
+}
+
+function showBrightnessHud() {
+  el.brightnessHud.textContent = `${Math.round(state.brightness * 100)}%`;
+  el.brightnessHud.classList.remove('hidden');
+  clearTimeout(state.brightnessHudTimer);
+  state.brightnessHudTimer = setTimeout(() => {
+    el.brightnessHud.classList.add('hidden');
+  }, BRIGHTNESS_HUD_HIDE_DELAY_MS);
 }
 
 function attachBrightnessDrag(target) {
