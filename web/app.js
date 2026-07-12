@@ -191,6 +191,7 @@ const state = {
   detailTotalMs: null,
   currentClipStart: null,
   timelinePlayheadEl: null,
+  playheadRafId: null,
 };
 
 // ---------- DOM ----------
@@ -761,6 +762,38 @@ function updateTimelinePlayhead() {
   playhead.classList.remove('hidden');
 }
 
+// Drives the waveform progress line and the full-timeline playhead while
+// playing. Uses requestAnimationFrame (tied to play/pause) rather than the
+// 'timeupdate' event, which only fires a few times a second and isn't
+// reliable enough on its own for a smoothly-tracking indicator.
+function stepPlayheadLoop() {
+  if (el.detailPlayer.paused || el.detailPlayer.ended) {
+    state.playheadRafId = null;
+    return;
+  }
+  const duration = el.detailPlayer.duration;
+  if (state.currentPeaks && isFinite(duration) && duration > 0) {
+    drawWaveform(state.currentPeaks, el.detailPlayer.currentTime / duration);
+  }
+  updateTimelinePlayhead();
+  state.playheadRafId = requestAnimationFrame(stepPlayheadLoop);
+}
+
+el.detailPlayer.addEventListener('play', () => {
+  if (state.playheadRafId == null) {
+    state.playheadRafId = requestAnimationFrame(stepPlayheadLoop);
+  }
+});
+
+el.detailPlayer.addEventListener('pause', () => {
+  if (state.playheadRafId != null) {
+    cancelAnimationFrame(state.playheadRafId);
+    state.playheadRafId = null;
+  }
+});
+
+// Also update once on each 'timeupdate' (e.g. after a manual seek) so the
+// indicators don't wait for the next animation frame to catch up.
 el.detailPlayer.addEventListener('timeupdate', () => {
   const duration = el.detailPlayer.duration;
   if (state.currentPeaks && isFinite(duration) && duration > 0) {
@@ -819,6 +852,7 @@ function playClipAt(clips, eventTime) {
   const clip = findClipAt(clips, eventTime);
   if (!clip) {
     el.detailPlayerStatus.textContent = `${formatClock(eventTime)} — 저장된 녹음이 없습니다`;
+    el.detailPlayer.pause();
     el.detailPlayer.classList.add('hidden');
     el.detailPlayer.removeAttribute('src');
     el.detailWaveform.classList.add('hidden');
@@ -847,9 +881,11 @@ function playClipAt(clips, eventTime) {
   el.detailPlayer.classList.remove('hidden');
   el.detailPlayerStatus.textContent = `${formatClock(eventTime)} 부근 재생 중`;
 
+  // Leave whatever waveform is already on screen alone while the new one
+  // decodes instead of blanking it out first — clearing-then-redrawing on
+  // every clip change (including auto-advance) is what caused the flicker.
   state.currentPeaks = null;
   el.detailWaveform.classList.remove('hidden');
-  drawWaveform(null, 0); // flat placeholder while decoding
   decodePeaks(clip.blob).then((peaks) => {
     state.currentPeaks = peaks;
     const duration = el.detailPlayer.duration;
@@ -886,6 +922,7 @@ async function showDetail(session) {
 
   for (const url of state.audioObjectUrls) URL.revokeObjectURL(url);
   state.audioObjectUrls = [];
+  el.detailPlayer.pause(); // fires 'pause', which cancels the rAF loop
   el.detailPlayer.classList.add('hidden');
   el.detailPlayer.removeAttribute('src');
   el.detailPlayerStatus.textContent = '타임라인을 탭하면 그 지점부터 재생됩니다';
@@ -906,18 +943,20 @@ async function showDetail(session) {
   // 점이나 시각 칩을 탭하면 그 순간이 포함된 1분짜리 녹음 클립을 그 지점부터 재생하고,
   // 점이 없는 구간(연속된 소리로 새 이벤트가 억제된 구간 포함)도 선을 직접 탭하면 재생된다.
   el.timelineTrack.innerHTML = '<div class="timeline-baseline"></div>';
-  for (const clip of clips) {
+  clips.forEach((clip, clipIndex) => {
     const clipStart = new Date(clip.startTime).getTime();
     const clipEnd = new Date(clip.endTime).getTime();
     const leftPct = Math.min(100, Math.max(0, ((clipStart - start.getTime()) / totalMs) * 100));
     const widthPct = Math.min(100 - leftPct, Math.max(0, ((clipEnd - clipStart) / totalMs) * 100));
 
     const segment = document.createElement('div');
-    segment.className = 'timeline-data-segment';
+    // Alternate shade per clip so adjacent minute-long recordings are
+    // visually distinguishable instead of blurring into one solid bar.
+    segment.className = `timeline-data-segment timeline-data-segment-${clipIndex % 2}`;
     segment.style.left = `${leftPct}%`;
     segment.style.width = `${widthPct}%`;
     el.timelineTrack.appendChild(segment);
-  }
+  });
   const sortedEvents = [...session.events].sort(
     (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
   );

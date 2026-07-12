@@ -397,9 +397,16 @@ html, body {
   position: absolute;
   top: 50%;
   height: 4px;
-  background: #8e8e93;
   border-radius: 2px;
   transform: translateY(-50%);
+}
+
+.timeline-data-segment-0 {
+  background: #8e8e93;
+}
+
+.timeline-data-segment-1 {
+  background: #aeaeb2;
 }
 
 .timeline-playhead {
