@@ -190,6 +190,7 @@ const state = {
   detailStart: null,
   detailTotalMs: null,
   currentClipStart: null,
+  timelinePlayheadEl: null,
 };
 
 // ---------- DOM ----------
@@ -750,10 +751,22 @@ function drawWaveform(peaks, progress) {
   }
 }
 
+function updateTimelinePlayhead() {
+  const playhead = state.timelinePlayheadEl;
+  if (!playhead || !state.currentClipStart || !state.detailStart || !state.detailTotalMs) return;
+
+  const absoluteMs = new Date(state.currentClipStart).getTime() + el.detailPlayer.currentTime * 1000;
+  const pct = Math.min(100, Math.max(0, ((absoluteMs - state.detailStart.getTime()) / state.detailTotalMs) * 100));
+  playhead.style.left = `${pct}%`;
+  playhead.classList.remove('hidden');
+}
+
 el.detailPlayer.addEventListener('timeupdate', () => {
   const duration = el.detailPlayer.duration;
-  if (!state.currentPeaks || !isFinite(duration) || duration <= 0) return;
-  drawWaveform(state.currentPeaks, el.detailPlayer.currentTime / duration);
+  if (state.currentPeaks && isFinite(duration) && duration > 0) {
+    drawWaveform(state.currentPeaks, el.detailPlayer.currentTime / duration);
+  }
+  updateTimelinePlayhead();
 });
 
 el.detailPlayer.addEventListener('ended', playNextClip);
@@ -812,6 +825,7 @@ function playClipAt(clips, eventTime) {
     el.detailNextBtn.classList.add('hidden');
     state.currentPeaks = null;
     state.currentClipStart = null;
+    state.timelinePlayheadEl?.classList.add('hidden');
     return;
   }
 
@@ -827,6 +841,7 @@ function playClipAt(clips, eventTime) {
   el.detailPlayer.onloadedmetadata = () => {
     el.detailPlayer.currentTime = offsetSec;
     el.detailPlayer.play().catch(() => {});
+    updateTimelinePlayhead();
   };
   el.detailPlayer.src = url;
   el.detailPlayer.classList.remove('hidden');
@@ -936,6 +951,11 @@ async function showDetail(session) {
     chip.addEventListener('click', () => selectEvent(index, eventTime, clips));
     el.detailEventList.appendChild(chip);
   });
+
+  const playhead = document.createElement('div');
+  playhead.className = 'timeline-playhead hidden';
+  el.timelineTrack.appendChild(playhead);
+  state.timelinePlayheadEl = playhead;
 }
 
 // ---------- wiring ----------

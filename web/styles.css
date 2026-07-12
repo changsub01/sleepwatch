@@ -402,6 +402,15 @@ html, body {
   transform: translateY(-50%);
 }
 
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #fff;
+  pointer-events: none;
+}
+
 .timeline-marker {
   position: absolute;
   top: 50%;
