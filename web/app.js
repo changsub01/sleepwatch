@@ -6,7 +6,7 @@ const BRIGHTNESS_KEY = 'sleepwatch.brightness';
 const THRESHOLD_DB = -30;
 const DEBOUNCE_MS = 5000;
 const BRIGHTNESS_DRAG_RANGE_PX = 300; // full-width drag = full brightness range
-const MAX_DIM_OPACITY = 0.85; // never fully black, always keep the clock legible
+const MAX_DIM_OPACITY = 0.925; // never fully black, always keep the clock legible
 const WAKE_LOCK_RECHECK_MS = 30 * 1000; // Safari's Wake Lock can silently drop over a long
                                          // night, so periodically verify it and re-acquire
 
@@ -173,17 +173,13 @@ const state = {
   autoStopHours: loadAutoStopHours(),
   brightness: loadBrightness(),
   mediaStream: null,
-  audioContext: null,
-  analyser: null,
-  detectionTimer: null,
   autoStopTimer: null,
   wakeLockSentinel: null,
   wakeLockTimer: null,
-  lastEventAt: 0,
   recorder: null,
   recorderMimeType: null,
   segmentTimer: null,
-  currentSegment: null,
+  segmentStoppedPromise: null,
   audioObjectUrls: [],
   waveformAudioContext: null,
   currentPeaks: null,
@@ -376,51 +372,57 @@ function toggleFullscreen() {
 el.clock.addEventListener('dblclick', toggleFullscreen);
 el.idleClock.addEventListener('dblclick', toggleFullscreen);
 
-// ---------- sound detection ----------
+// ---------- recording (1-minute chunks, analyzed after the fact for sound events) ----------
 
-function startDetection(stream) {
-  state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const source = state.audioContext.createMediaStreamSource(stream);
-  state.analyser = state.audioContext.createAnalyser();
-  state.analyser.fftSize = 2048;
-  source.connect(state.analyser);
+function findSoundEvents(audioBuffer, segmentStart) {
+  const data = audioBuffer.getChannelData(0);
+  const sampleRate = audioBuffer.sampleRate;
+  const windowSamples = Math.max(1, Math.round(sampleRate * 0.05)); // ~50ms analysis window
+  const debounceSamples = Math.round((DEBOUNCE_MS / 1000) * sampleRate);
 
-  const buffer = new Float32Array(state.analyser.fftSize);
+  const events = [];
+  let lastEventSample = -Infinity;
 
-  state.detectionTimer = setInterval(() => {
-    state.analyser.getFloatTimeDomainData(buffer);
-
+  for (let i = 0; i < data.length; i += windowSamples) {
+    const end = Math.min(data.length, i + windowSamples);
     let sumSquares = 0;
-    for (let i = 0; i < buffer.length; i++) {
-      sumSquares += buffer[i] * buffer[i];
-    }
-    const rms = Math.sqrt(sumSquares / buffer.length);
+    for (let j = i; j < end; j++) sumSquares += data[j] * data[j];
+    const rms = Math.sqrt(sumSquares / (end - i));
     const decibels = 20 * Math.log10(Math.max(rms, 1e-7));
 
-    if (decibels <= THRESHOLD_DB) return;
+    if (decibels <= THRESHOLD_DB) continue;
+    if (i - lastEventSample < debounceSamples) continue;
 
-    if (state.currentSegment) state.currentSegment.hasSound = true;
-
-    const now = Date.now();
-    if (now - state.lastEventAt < DEBOUNCE_MS) return;
-    state.lastEventAt = now;
-
-    state.currentSession.events.push({ timestamp: new Date(now).toISOString(), level: decibels });
-    el.eventCount.textContent = `감지된 이벤트: ${state.currentSession.events.length}건`;
-  }, 200);
-}
-
-function stopDetection() {
-  if (state.detectionTimer) {
-    clearInterval(state.detectionTimer);
-    state.detectionTimer = null;
+    lastEventSample = i;
+    const offsetMs = (i / sampleRate) * 1000;
+    events.push({
+      timestamp: new Date(segmentStart.getTime() + offsetMs).toISOString(),
+      level: decibels,
+    });
   }
-  state.audioContext?.close().catch(() => {});
-  state.audioContext = null;
-  state.analyser = null;
+
+  return events;
 }
 
-// ---------- recording (1-minute chunks; segments with no detected sound are discarded) ----------
+async function analyzeSegment(sessionId, segmentStart, segmentEnd, blob) {
+  let audioBuffer;
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    audioBuffer = await getWaveformAudioContext().decodeAudioData(arrayBuffer);
+  } catch {
+    return; // couldn't decode — nothing to keep
+  }
+
+  const events = findSoundEvents(audioBuffer, segmentStart);
+  if (events.length === 0) return; // silent minute — discard the clip entirely
+
+  if (state.currentSession && state.currentSession.id === sessionId) {
+    state.currentSession.events.push(...events);
+    el.eventCount.textContent = `감지된 이벤트: ${state.currentSession.events.length}건`;
+  }
+
+  await saveAudioClip(sessionId, segmentStart, segmentEnd, blob);
+}
 
 function pickRecordingMimeType() {
   if (typeof MediaRecorder === 'undefined') return null;
@@ -434,11 +436,12 @@ function startSegment(stream) {
   const segmentStart = new Date();
   const chunks = [];
 
-  // Captured by this closure (not read back off shared state later) so that
-  // the *next* segment's reset can't clobber *this* segment's flag before
-  // this recorder's async onstop gets a chance to read it.
-  const segmentInfo = { hasSound: false };
-  state.currentSegment = segmentInfo;
+  // Resolves once this segment's onstop has finished analyzing/saving, so
+  // stopRecording() can await the *last* segment instead of losing it.
+  let resolveStopped;
+  state.segmentStoppedPromise = new Promise((resolve) => {
+    resolveStopped = resolve;
+  });
 
   let recorder;
   try {
@@ -448,18 +451,20 @@ function startSegment(stream) {
     });
   } catch {
     state.recorder = null;
+    resolveStopped();
     return;
   }
 
   recorder.ondataavailable = (e) => {
     if (e.data && e.data.size > 0) chunks.push(e.data);
   };
-  recorder.onstop = () => {
+  recorder.onstop = async () => {
     const segmentEnd = new Date();
-    if (segmentInfo.hasSound && chunks.length > 0) {
+    if (chunks.length > 0) {
       const blob = new Blob(chunks, { type: state.recorderMimeType });
-      saveAudioClip(sessionId, segmentStart, segmentEnd, blob);
+      await analyzeSegment(sessionId, segmentStart, segmentEnd, blob);
     }
+    resolveStopped();
   };
 
   recorder.start();
@@ -481,14 +486,17 @@ function startRecording(stream) {
   state.segmentTimer = setInterval(() => rolloverSegment(stream), RECORDING_SEGMENT_MS);
 }
 
-function stopRecording() {
+async function stopRecording() {
   clearInterval(state.segmentTimer);
   state.segmentTimer = null;
+
+  const stopped = state.segmentStoppedPromise;
   if (state.recorder && state.recorder.state !== 'inactive') {
     state.recorder.stop();
   }
   state.recorder = null;
-  state.currentSegment = null;
+
+  if (stopped) await stopped;
 }
 
 // ---------- session lifecycle ----------
@@ -505,14 +513,12 @@ async function startSession() {
   }
 
   state.mediaStream = stream;
-  state.lastEventAt = 0;
   state.currentSession = {
     id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
     startTime: new Date(),
     events: [],
   };
 
-  startDetection(stream);
   startRecording(stream);
   acquireWakeLock();
   startWakeLockWatchdog();
@@ -538,11 +544,15 @@ function tick() {
   }
 }
 
-function stopSession() {
+async function stopSession() {
   if (!state.currentSession) return;
 
-  stopDetection();
-  stopRecording();
+  const session = state.currentSession;
+  const endTime = new Date();
+
+  // Wait for the in-flight final segment's decode/analysis so its events
+  // (and clip, if any) make it into this session before it's saved below.
+  await stopRecording();
   state.mediaStream?.getTracks().forEach((t) => t.stop());
   state.mediaStream = null;
 
@@ -550,9 +560,6 @@ function stopSession() {
   state.autoStopTimer = null;
   stopWakeLockWatchdog();
   releaseWakeLock();
-
-  const session = state.currentSession;
-  const endTime = new Date();
 
   const sessions = loadSessions();
   sessions.push({
