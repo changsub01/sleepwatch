@@ -237,10 +237,12 @@ html, body {
   padding: 24px;
   width: min(320px, 90vw);
   text-align: center;
+  /* still tracks the stop button's size so it can't drift out of sync, just scaled down 20% */
+  --dialog-font-size: calc(var(--stop-btn-font-size) * 0.8);
 }
 
 .dialog p {
-  font-size: var(--stop-btn-font-size);
+  font-size: var(--dialog-font-size);
   margin: 0;
 }
 
@@ -257,7 +259,7 @@ html, body {
   border: none;
   background: #2c2c2e;
   color: #fff;
-  font-size: var(--stop-btn-font-size);
+  font-size: var(--dialog-font-size);
 }
 
 .dialog-btn-primary {
