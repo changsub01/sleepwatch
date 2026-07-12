@@ -511,16 +511,27 @@ function rolloverSegment(stream) {
   startSegment(stream);
 }
 
+function scheduleNextRollover(stream) {
+  // Recompute the delay to the next :00 mark every time (rather than a fixed
+  // setInterval) so segments always land on the minute boundary and drift
+  // from setTimeout/setInterval slop doesn't accumulate across the night.
+  const msToNextMinute = RECORDING_SEGMENT_MS - (Date.now() % RECORDING_SEGMENT_MS);
+  state.segmentTimer = setTimeout(() => {
+    rolloverSegment(stream);
+    scheduleNextRollover(stream);
+  }, msToNextMinute);
+}
+
 function startRecording(stream) {
   state.recorderMimeType = pickRecordingMimeType();
   if (!state.recorderMimeType) return; // recording unsupported on this browser — event markers still work
 
-  startSegment(stream);
-  state.segmentTimer = setInterval(() => rolloverSegment(stream), RECORDING_SEGMENT_MS);
+  startSegment(stream); // first segment is shorter than a minute — it just fills the gap up to the next :00
+  scheduleNextRollover(stream);
 }
 
 async function stopRecording() {
-  clearInterval(state.segmentTimer);
+  clearTimeout(state.segmentTimer);
   state.segmentTimer = null;
 
   const stopped = state.segmentStoppedPromise;
