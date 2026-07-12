@@ -30,7 +30,7 @@ jobs:
       - name: Write version info
         run: |
           printf '{"version":"%s","builtAt":"%s"}\n' \
-            "$(git rev-parse --short HEAD)" \
+            "$(cat web/VERSION)" \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             > web/version.json
       - uses: actions/configure-pages@v5
