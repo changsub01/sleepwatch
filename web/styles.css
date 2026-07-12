@@ -380,6 +380,7 @@ html, body {
 .timeline-track {
   position: relative;
   height: 32px;
+  cursor: pointer;
 }
 
 .timeline-baseline {

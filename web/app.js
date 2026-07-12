@@ -186,6 +186,9 @@ const state = {
   waveformAudioContext: null,
   currentPeaks: null,
   brightnessHudTimer: null,
+  detailClips: null,
+  detailStart: null,
+  detailTotalMs: null,
 };
 
 // ---------- DOM ----------
@@ -760,6 +763,22 @@ el.detailWaveform.addEventListener('click', (e) => {
   el.detailPlayer.play().catch(() => {});
 });
 
+// Tapping anywhere on the timeline baseline (not just a marker) plays whatever
+// clip covers that moment — this is the only way to reach a "continuation"
+// minute that has a saved clip but no marker of its own (see selectEvent).
+el.timelineTrack.addEventListener('click', (e) => {
+  if (!state.detailClips || !state.detailStart || !state.detailTotalMs) return;
+  const rect = el.timelineTrack.getBoundingClientRect();
+  const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  const time = new Date(state.detailStart.getTime() + frac * state.detailTotalMs);
+
+  for (const activeEl of document.querySelectorAll('.timeline-marker.active, .event-list li.active')) {
+    activeEl.classList.remove('active');
+  }
+
+  playClipAt(state.detailClips, time);
+});
+
 function findClipAt(clips, time) {
   const t = time.getTime();
   return clips.find((c) => t >= new Date(c.startTime).getTime() && t < new Date(c.endTime).getTime());
@@ -829,16 +848,20 @@ async function showDetail(session) {
   state.audioObjectUrls = [];
   el.detailPlayer.classList.add('hidden');
   el.detailPlayer.removeAttribute('src');
-  el.detailPlayerStatus.textContent = '타임라인의 점이나 시각을 탭하면 그 지점부터 재생됩니다';
+  el.detailPlayerStatus.textContent = '타임라인을 탭하면 그 지점부터 재생됩니다';
   el.detailWaveform.classList.add('hidden');
   state.currentPeaks = null;
 
   showView(el.viewDetail);
 
   const clips = await getAudioClips(session.id);
+  state.detailClips = clips;
+  state.detailStart = start;
+  state.detailTotalMs = totalMs;
 
   // 소리가 감지되지 않은 구간은 단순한 기준선으로, 감지된 이벤트는 그 위의 점으로 표시.
-  // 점이나 시각 칩을 탭하면 그 순간이 포함된 1분짜리 녹음 클립을 그 지점부터 재생한다.
+  // 점이나 시각 칩을 탭하면 그 순간이 포함된 1분짜리 녹음 클립을 그 지점부터 재생하고,
+  // 점이 없는 구간(연속된 소리로 새 이벤트가 억제된 구간 포함)도 선을 직접 탭하면 재생된다.
   el.timelineTrack.innerHTML = '<div class="timeline-baseline"></div>';
   const sortedEvents = [...session.events].sort(
     (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
@@ -861,7 +884,10 @@ async function showDetail(session) {
     marker.dataset.index = String(index);
     marker.style.left = `${pct}%`;
     marker.title = formatClock(eventTime);
-    marker.addEventListener('click', () => selectEvent(index, eventTime, clips));
+    marker.addEventListener('click', (e) => {
+      e.stopPropagation(); // don't also trigger the baseline's generic tap-to-play handler
+      selectEvent(index, eventTime, clips);
+    });
     el.timelineTrack.appendChild(marker);
 
     const chip = document.createElement('li');
