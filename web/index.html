@@ -13,6 +13,8 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="brightness-overlay"></div>
+
   <!-- 시작 화면 -->
   <section id="view-idle" class="view">
     <div class="idle-content">
@@ -91,7 +93,16 @@
       <div><span class="detail-label">감지된 이벤트</span><span id="detail-events"></span></div>
     </div>
     <h3 class="timeline-heading">타임라인</h3>
-    <ul id="detail-timeline" class="timeline-list"></ul>
+    <div class="timeline-wrap">
+      <div class="timeline-endpoints">
+        <span id="timeline-start-label"></span>
+        <span id="timeline-end-label"></span>
+      </div>
+      <div id="timeline-track" class="timeline-track">
+        <div class="timeline-baseline"></div>
+      </div>
+      <ul id="detail-event-list" class="event-list"></ul>
+    </div>
   </section>
 
   <script src="app.js"></script>

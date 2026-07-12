@@ -2,9 +2,11 @@
 
 const STORAGE_KEY = 'sleepwatch.sessions';
 const AUTO_STOP_KEY = 'sleepwatch.autoStopHours';
+const BRIGHTNESS_KEY = 'sleepwatch.brightness';
 const THRESHOLD_DB = -30;
 const DEBOUNCE_MS = 5000;
-const BUCKET_MS = 30 * 60 * 1000;
+const BRIGHTNESS_DRAG_RANGE_PX = 300; // full-width drag = full brightness range
+const MAX_DIM_OPACITY = 0.85; // never fully black, always keep the clock legible
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -58,11 +60,22 @@ function saveAutoStopHours(hours) {
   localStorage.setItem(AUTO_STOP_KEY, String(hours));
 }
 
+function loadBrightness() {
+  const raw = localStorage.getItem(BRIGHTNESS_KEY);
+  const n = raw === null ? 1 : Number(raw);
+  return Number.isFinite(n) ? n : 1;
+}
+
+function saveBrightness(value) {
+  localStorage.setItem(BRIGHTNESS_KEY, String(value));
+}
+
 // ---------- state ----------
 
 const state = {
   currentSession: null, // { id, startTime: Date, events: [{timestamp: Date, level: number}] }
   autoStopHours: loadAutoStopHours(),
+  brightness: loadBrightness(),
   mediaStream: null,
   audioContext: null,
   analyser: null,
@@ -75,6 +88,8 @@ const state = {
 // ---------- DOM ----------
 
 const el = {
+  brightnessOverlay: document.getElementById('brightness-overlay'),
+
   viewIdle: document.getElementById('view-idle'),
   viewMonitoring: document.getElementById('view-monitoring'),
   viewHistory: document.getElementById('view-history'),
@@ -108,7 +123,10 @@ const el = {
   detailEnd: document.getElementById('detail-end'),
   detailDuration: document.getElementById('detail-duration'),
   detailEvents: document.getElementById('detail-events'),
-  detailTimeline: document.getElementById('detail-timeline'),
+  timelineStartLabel: document.getElementById('timeline-start-label'),
+  timelineEndLabel: document.getElementById('timeline-end-label'),
+  timelineTrack: document.getElementById('timeline-track'),
+  detailEventList: document.getElementById('detail-event-list'),
 };
 
 // ---------- view switching ----------
@@ -158,6 +176,61 @@ document.addEventListener('visibilitychange', () => {
     acquireWakeLock();
   }
 });
+
+// ---------- brightness (dimming overlay — cannot control real backlight from a web page) ----------
+
+function applyBrightness() {
+  el.brightnessOverlay.style.opacity = String((1 - state.brightness) * MAX_DIM_OPACITY);
+}
+
+function setBrightness(value) {
+  state.brightness = Math.min(1, Math.max(0, value));
+  saveBrightness(state.brightness);
+  applyBrightness();
+}
+
+function attachBrightnessDrag(target) {
+  let drag = null;
+
+  target.addEventListener('pointerdown', (e) => {
+    drag = { startX: e.clientX, startBrightness: state.brightness };
+  });
+
+  target.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const deltaX = e.clientX - drag.startX;
+    setBrightness(drag.startBrightness + deltaX / BRIGHTNESS_DRAG_RANGE_PX);
+  });
+
+  const endDrag = () => {
+    drag = null;
+  };
+  target.addEventListener('pointerup', endDrag);
+  target.addEventListener('pointercancel', endDrag);
+}
+
+attachBrightnessDrag(el.clock);
+attachBrightnessDrag(el.idleClock);
+
+// ---------- fullscreen ----------
+
+function toggleFullscreen() {
+  const doc = document;
+  const isFullscreen = doc.fullscreenElement || doc.webkitFullscreenElement;
+  try {
+    if (!isFullscreen) {
+      const root = doc.documentElement;
+      (root.requestFullscreen || root.webkitRequestFullscreen)?.call(root);
+    } else {
+      (doc.exitFullscreen || doc.webkitExitFullscreen)?.call(doc);
+    }
+  } catch {
+    // Fullscreen API unsupported — ignore
+  }
+}
+
+el.clock.addEventListener('dblclick', toggleFullscreen);
+el.idleClock.addEventListener('dblclick', toggleFullscreen);
 
 // ---------- sound detection ----------
 
@@ -276,6 +349,12 @@ function stopSession() {
 
 // ---------- history / detail ----------
 
+function deleteSession(id) {
+  if (!confirm('이 기록을 삭제할까요?')) return;
+  saveSessions(loadSessions().filter((s) => s.id !== id));
+  renderHistory();
+}
+
 function renderHistory() {
   const sessions = loadSessions().sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
   el.historyList.innerHTML = '';
@@ -283,11 +362,14 @@ function renderHistory() {
 
   for (const session of sessions) {
     const li = document.createElement('li');
+    li.className = 'history-item';
     const start = new Date(session.startTime);
     const end = new Date(session.endTime);
     const durationMs = end - start;
 
-    li.innerHTML = `
+    const content = document.createElement('div');
+    content.className = 'history-content';
+    content.innerHTML = `
       <div class="history-date">${formatDayTime(start)}</div>
       <div class="history-meta">
         <span>~ ${formatDayTime(end)}</span>
@@ -295,7 +377,18 @@ function renderHistory() {
         <span>· 이벤트 ${session.events.length}건</span>
       </div>
     `;
-    li.addEventListener('click', () => showDetail(session));
+    content.addEventListener('click', () => showDetail(session));
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'history-delete-btn';
+    deleteBtn.textContent = '×';
+    deleteBtn.setAttribute('aria-label', '기록 삭제');
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteSession(session.id);
+    });
+
+    li.append(content, deleteBtn);
     el.historyList.appendChild(li);
   }
 }
@@ -303,6 +396,7 @@ function renderHistory() {
 function showDetail(session) {
   const start = new Date(session.startTime);
   const end = new Date(session.endTime);
+  const totalMs = Math.max(1, end - start);
 
   el.detailTitle.textContent = formatDayTime(start);
   el.detailStart.textContent = formatDayTime(start);
@@ -310,33 +404,37 @@ function showDetail(session) {
   el.detailDuration.textContent = formatDuration(end - start);
   el.detailEvents.textContent = `${session.events.length}건`;
 
-  el.detailTimeline.innerHTML = '';
+  el.timelineStartLabel.textContent = formatClockShort(start);
+  el.timelineEndLabel.textContent = formatClockShort(end);
+
+  // 소리가 감지되지 않은 구간은 단순한 기준선으로, 감지된 이벤트는 그 위의 점으로 표시
+  el.timelineTrack.innerHTML = '<div class="timeline-baseline"></div>';
   const sortedEvents = [...session.events].sort(
     (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
   );
 
-  let cursor = start.getTime();
-  const endMs = end.getTime();
-  while (cursor < endMs) {
-    const bucketEnd = Math.min(cursor + BUCKET_MS, endMs);
-    const eventsInBucket = sortedEvents.filter((e) => {
-      const t = new Date(e.timestamp).getTime();
-      return t >= cursor && t < bucketEnd;
-    });
+  for (const event of sortedEvents) {
+    const t = new Date(event.timestamp).getTime();
+    const pct = Math.min(100, Math.max(0, ((t - start.getTime()) / totalMs) * 100));
+    const marker = document.createElement('div');
+    marker.className = 'timeline-marker';
+    marker.style.left = `${pct}%`;
+    marker.title = formatClock(new Date(event.timestamp));
+    el.timelineTrack.appendChild(marker);
+  }
 
+  el.detailEventList.innerHTML = '';
+  if (sortedEvents.length === 0) {
     const li = document.createElement('li');
-    const rangeLabel = `${formatClock(new Date(cursor)).slice(0, 5)} ~ ${formatClock(new Date(bucketEnd)).slice(0, 5)}`;
-
-    if (eventsInBucket.length === 0) {
-      li.innerHTML = `<div class="timeline-range">${rangeLabel}</div><div class="timeline-empty">기록 없음</div>`;
-    } else {
-      const eventLines = eventsInBucket
-        .map((e) => `<div class="timeline-event">${formatClock(new Date(e.timestamp))}</div>`)
-        .join('');
-      li.innerHTML = `<div class="timeline-range">${rangeLabel}</div>${eventLines}`;
+    li.className = 'event-list-empty';
+    li.textContent = '감지된 소리 없음';
+    el.detailEventList.appendChild(li);
+  } else {
+    for (const event of sortedEvents) {
+      const li = document.createElement('li');
+      li.textContent = formatClock(new Date(event.timestamp));
+      el.detailEventList.appendChild(li);
     }
-    el.detailTimeline.appendChild(li);
-    cursor = bucketEnd;
   }
 
   showView(el.viewDetail);
@@ -370,6 +468,7 @@ el.detailBackBtn.addEventListener('click', () => {
 // ---------- init ----------
 
 renderAutoStopLabel();
+applyBrightness();
 showView(el.viewIdle);
 tick();
 setInterval(tick, 1000);

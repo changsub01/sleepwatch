@@ -17,6 +17,15 @@ html, body {
   display: none !important;
 }
 
+#brightness-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9999;
+}
+
 .view {
   min-height: 100vh;
   min-height: 100dvh;
@@ -49,6 +58,8 @@ html, body {
   font-weight: 700;
   font-size: clamp(36px, 9vmin, 84px);
   line-height: 1;
+  touch-action: none;
+  cursor: ew-resize;
 }
 
 .setting-row {
@@ -126,6 +137,8 @@ html, body {
   font-weight: 700;
   font-size: clamp(64px, 16vmin, 160px);
   line-height: 1;
+  touch-action: none;
+  cursor: ew-resize;
 }
 
 .stats-row {
@@ -227,15 +240,35 @@ html, body {
   font-size: 17px;
 }
 
-.history-list, .timeline-list {
+.history-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.history-list li {
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 16px 20px;
   border-bottom: 1px solid #1c1c1e;
+}
+
+.history-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-delete-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #2c2c2e;
+  color: #aaa;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .history-date {
@@ -282,26 +315,64 @@ html, body {
   color: #aaa;
 }
 
-.timeline-list li {
-  padding: 12px 20px;
-  border-bottom: 1px solid #1c1c1e;
+.timeline-wrap {
+  padding: 20px;
 }
 
-.timeline-range {
-  font-weight: 600;
-  font-family: "SF Mono", ui-monospace, Menlo, monospace;
-  font-size: 14px;
-}
-
-.timeline-empty {
-  color: #666;
-  font-size: 13px;
-  margin-top: 4px;
-}
-
-.timeline-event {
+.timeline-endpoints {
+  display: flex;
+  justify-content: space-between;
   color: #aaa;
   font-size: 13px;
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
-  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.timeline-track {
+  position: relative;
+  height: 32px;
+}
+
+.timeline-baseline {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #333;
+  transform: translateY(-50%);
+}
+
+.timeline-marker {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff9f0a;
+  transform: translate(-50%, -50%);
+}
+
+.event-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.event-list li {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  color: #ddd;
+  background: #1c1c1e;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.event-list-empty {
+  color: #666 !important;
+  background: none !important;
+  padding: 0 !important;
 }
