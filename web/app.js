@@ -170,7 +170,7 @@ const state = {
   recorder: null,
   recorderMimeType: null,
   segmentTimer: null,
-  segmentHasSound: false,
+  currentSegment: null,
   audioObjectUrls: [],
 };
 
@@ -345,7 +345,7 @@ function startDetection(stream) {
 
     if (decibels <= THRESHOLD_DB) return;
 
-    state.segmentHasSound = true;
+    if (state.currentSegment) state.currentSegment.hasSound = true;
 
     const now = Date.now();
     if (now - state.lastEventAt < DEBOUNCE_MS) return;
@@ -379,7 +379,12 @@ function startSegment(stream) {
   const sessionId = state.currentSession.id;
   const segmentStart = new Date();
   const chunks = [];
-  state.segmentHasSound = false;
+
+  // Captured by this closure (not read back off shared state later) so that
+  // the *next* segment's reset can't clobber *this* segment's flag before
+  // this recorder's async onstop gets a chance to read it.
+  const segmentInfo = { hasSound: false };
+  state.currentSegment = segmentInfo;
 
   let recorder;
   try {
@@ -397,7 +402,7 @@ function startSegment(stream) {
   };
   recorder.onstop = () => {
     const segmentEnd = new Date();
-    if (state.segmentHasSound && chunks.length > 0) {
+    if (segmentInfo.hasSound && chunks.length > 0) {
       const blob = new Blob(chunks, { type: state.recorderMimeType });
       saveAudioClip(sessionId, segmentStart, segmentEnd, blob);
     }
@@ -429,6 +434,7 @@ function stopRecording() {
     state.recorder.stop();
   }
   state.recorder = null;
+  state.currentSegment = null;
 }
 
 // ---------- session lifecycle ----------
