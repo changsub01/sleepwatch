@@ -587,6 +587,18 @@ function playClipAt(clips, eventTime) {
   el.detailPlayerStatus.textContent = `${formatClock(eventTime)} 부근 재생 중`;
 }
 
+// 타임라인의 점과 이벤트 시각 칩은 같은 이벤트를 가리키므로, 하나를 선택하면
+// data-index로 서로를 찾아 둘 다 강조 표시해 시각적으로 짝지어 준다.
+function selectEvent(index, eventTime, clips) {
+  for (const activeEl of document.querySelectorAll('.timeline-marker.active, .event-list li.active')) {
+    activeEl.classList.remove('active');
+  }
+  el.timelineTrack.querySelector(`.timeline-marker[data-index="${index}"]`)?.classList.add('active');
+  el.detailEventList.querySelector(`li[data-index="${index}"]`)?.classList.add('active');
+
+  playClipAt(clips, eventTime);
+}
+
 async function showDetail(session) {
   const start = new Date(session.startTime);
   const end = new Date(session.endTime);
@@ -626,22 +638,24 @@ async function showDetail(session) {
     el.detailEventList.appendChild(li);
   }
 
-  for (const event of sortedEvents) {
+  sortedEvents.forEach((event, index) => {
     const eventTime = new Date(event.timestamp);
     const pct = Math.min(100, Math.max(0, ((eventTime.getTime() - start.getTime()) / totalMs) * 100));
 
     const marker = document.createElement('div');
     marker.className = 'timeline-marker';
+    marker.dataset.index = String(index);
     marker.style.left = `${pct}%`;
     marker.title = formatClock(eventTime);
-    marker.addEventListener('click', () => playClipAt(clips, eventTime));
+    marker.addEventListener('click', () => selectEvent(index, eventTime, clips));
     el.timelineTrack.appendChild(marker);
 
     const chip = document.createElement('li');
+    chip.dataset.index = String(index);
     chip.textContent = formatClock(eventTime);
-    chip.addEventListener('click', () => playClipAt(clips, eventTime));
+    chip.addEventListener('click', () => selectEvent(index, eventTime, clips));
     el.detailEventList.appendChild(chip);
-  }
+  });
 }
 
 // ---------- wiring ----------

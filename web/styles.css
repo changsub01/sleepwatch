@@ -364,6 +364,13 @@ html, body {
   transform: translate(-50%, -50%);
 }
 
+.timeline-marker.active::after {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.5);
+}
+
 .event-list {
   list-style: none;
   margin: 16px 0 0;
@@ -385,6 +392,12 @@ html, body {
 
 .event-list li:active {
   background: #2c2c2e;
+}
+
+.event-list li.active {
+  background: #ff9f0a;
+  color: #000;
+  font-weight: 600;
 }
 
 .event-list-empty {
