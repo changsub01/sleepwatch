@@ -47,6 +47,7 @@ html, body {
   align-items: center;
   gap: 28px;
   padding: 24px;
+  transition: transform 1.5s ease-in-out;
 }
 
 .app-header {
@@ -146,6 +147,7 @@ html, body {
   gap: 40px;
   padding: 24px;
   width: 100%;
+  transition: transform 1.5s ease-in-out;
 }
 
 .clock {

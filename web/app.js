@@ -10,6 +10,10 @@ const MAX_DIM_OPACITY = 0.85; // never fully black, always keep the clock legibl
 const WAKE_LOCK_RECHECK_MS = 30 * 1000; // Safari's Wake Lock can silently drop over a long
                                          // night, so periodically verify it and re-acquire
 
+const PIXEL_SHIFT_INTERVAL_MS = 2 * 60 * 1000; // nudge static content periodically to avoid
+                                                // OLED burn-in over an 8-hour night
+const PIXEL_SHIFT_OFFSETS = [-16, 0, 16];
+
 const RECORDING_SEGMENT_MS = 60 * 1000; // stop/restart the recorder every minute so each
                                          // chunk is an independently playable audio file
 const RECORDING_BITRATE = 32000; // voice-quality bitrate keeps overnight storage manageable
@@ -195,6 +199,9 @@ const el = {
   viewHistory: document.getElementById('view-history'),
   viewDetail: document.getElementById('view-detail'),
 
+  idleContent: document.getElementById('idle-content'),
+  monitorContent: document.getElementById('monitor-content'),
+
   idleClock: document.getElementById('idle-clock'),
   versionInfo: document.getElementById('version-info'),
   autoStopLabel: document.getElementById('auto-stop-label'),
@@ -336,6 +343,18 @@ function attachBrightnessDrag(target) {
 
 attachBrightnessDrag(el.clock);
 attachBrightnessDrag(el.idleClock);
+
+// ---------- pixel shift (burn-in mitigation for OLED screens) ----------
+
+function applyRandomPixelShift() {
+  const dx = PIXEL_SHIFT_OFFSETS[Math.floor(Math.random() * PIXEL_SHIFT_OFFSETS.length)];
+  const dy = PIXEL_SHIFT_OFFSETS[Math.floor(Math.random() * PIXEL_SHIFT_OFFSETS.length)];
+  const transform = `translate(${dx}px, ${dy}px)`;
+  el.idleContent.style.transform = transform;
+  el.monitorContent.style.transform = transform;
+}
+
+setInterval(applyRandomPixelShift, PIXEL_SHIFT_INTERVAL_MS);
 
 // ---------- fullscreen ----------
 
