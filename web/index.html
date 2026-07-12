@@ -104,7 +104,10 @@
       <ul id="detail-event-list" class="event-list"></ul>
     </div>
     <h3 class="timeline-heading">녹음</h3>
-    <ul id="detail-audio-list" class="audio-list"></ul>
+    <div class="player-wrap">
+      <p id="detail-player-status" class="player-status">타임라인의 점이나 시각을 탭하면 그 지점부터 재생됩니다</p>
+      <audio id="detail-player" class="detail-player hidden" controls preload="none"></audio>
+    </div>
   </section>
 
   <script src="app.js"></script>

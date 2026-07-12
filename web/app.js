@@ -216,7 +216,8 @@ const el = {
   timelineEndLabel: document.getElementById('timeline-end-label'),
   timelineTrack: document.getElementById('timeline-track'),
   detailEventList: document.getElementById('detail-event-list'),
-  detailAudioList: document.getElementById('detail-audio-list'),
+  detailPlayer: document.getElementById('detail-player'),
+  detailPlayerStatus: document.getElementById('detail-player-status'),
 };
 
 // ---------- view switching ----------
@@ -559,6 +560,33 @@ function renderHistory() {
   }
 }
 
+function findClipAt(clips, time) {
+  const t = time.getTime();
+  return clips.find((c) => t >= new Date(c.startTime).getTime() && t < new Date(c.endTime).getTime());
+}
+
+function playClipAt(clips, eventTime) {
+  const clip = findClipAt(clips, eventTime);
+  if (!clip) {
+    el.detailPlayerStatus.textContent = `${formatClock(eventTime)} — 저장된 녹음이 없습니다`;
+    el.detailPlayer.classList.add('hidden');
+    el.detailPlayer.removeAttribute('src');
+    return;
+  }
+
+  const url = URL.createObjectURL(clip.blob);
+  state.audioObjectUrls.push(url);
+
+  const offsetSec = Math.max(0, (eventTime.getTime() - new Date(clip.startTime).getTime()) / 1000);
+  el.detailPlayer.onloadedmetadata = () => {
+    el.detailPlayer.currentTime = offsetSec;
+    el.detailPlayer.play().catch(() => {});
+  };
+  el.detailPlayer.src = url;
+  el.detailPlayer.classList.remove('hidden');
+  el.detailPlayerStatus.textContent = `${formatClock(eventTime)} 부근 재생 중`;
+}
+
 async function showDetail(session) {
   const start = new Date(session.startTime);
   const end = new Date(session.endTime);
@@ -573,21 +601,22 @@ async function showDetail(session) {
   el.timelineStartLabel.textContent = formatClockShort(start);
   el.timelineEndLabel.textContent = formatClockShort(end);
 
-  // 소리가 감지되지 않은 구간은 단순한 기준선으로, 감지된 이벤트는 그 위의 점으로 표시
+  for (const url of state.audioObjectUrls) URL.revokeObjectURL(url);
+  state.audioObjectUrls = [];
+  el.detailPlayer.classList.add('hidden');
+  el.detailPlayer.removeAttribute('src');
+  el.detailPlayerStatus.textContent = '타임라인의 점이나 시각을 탭하면 그 지점부터 재생됩니다';
+
+  showView(el.viewDetail);
+
+  const clips = await getAudioClips(session.id);
+
+  // 소리가 감지되지 않은 구간은 단순한 기준선으로, 감지된 이벤트는 그 위의 점으로 표시.
+  // 점이나 시각 칩을 탭하면 그 순간이 포함된 1분짜리 녹음 클립을 그 지점부터 재생한다.
   el.timelineTrack.innerHTML = '<div class="timeline-baseline"></div>';
   const sortedEvents = [...session.events].sort(
     (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
   );
-
-  for (const event of sortedEvents) {
-    const t = new Date(event.timestamp).getTime();
-    const pct = Math.min(100, Math.max(0, ((t - start.getTime()) / totalMs) * 100));
-    const marker = document.createElement('div');
-    marker.className = 'timeline-marker';
-    marker.style.left = `${pct}%`;
-    marker.title = formatClock(new Date(event.timestamp));
-    el.timelineTrack.appendChild(marker);
-  }
 
   el.detailEventList.innerHTML = '';
   if (sortedEvents.length === 0) {
@@ -595,46 +624,23 @@ async function showDetail(session) {
     li.className = 'event-list-empty';
     li.textContent = '감지된 소리 없음';
     el.detailEventList.appendChild(li);
-  } else {
-    for (const event of sortedEvents) {
-      const li = document.createElement('li');
-      li.textContent = formatClock(new Date(event.timestamp));
-      el.detailEventList.appendChild(li);
-    }
   }
 
-  showView(el.viewDetail);
+  for (const event of sortedEvents) {
+    const eventTime = new Date(event.timestamp);
+    const pct = Math.min(100, Math.max(0, ((eventTime.getTime() - start.getTime()) / totalMs) * 100));
 
-  for (const url of state.audioObjectUrls) URL.revokeObjectURL(url);
-  state.audioObjectUrls = [];
+    const marker = document.createElement('div');
+    marker.className = 'timeline-marker';
+    marker.style.left = `${pct}%`;
+    marker.title = formatClock(eventTime);
+    marker.addEventListener('click', () => playClipAt(clips, eventTime));
+    el.timelineTrack.appendChild(marker);
 
-  el.detailAudioList.innerHTML = '';
-  const clips = await getAudioClips(session.id);
-  if (clips.length === 0) {
-    const li = document.createElement('li');
-    li.className = 'event-list-empty';
-    li.textContent = '저장된 녹음 없음';
-    el.detailAudioList.appendChild(li);
-    return;
-  }
-  for (const clip of clips) {
-    const url = URL.createObjectURL(clip.blob);
-    state.audioObjectUrls.push(url);
-
-    const li = document.createElement('li');
-    li.className = 'audio-item';
-
-    const label = document.createElement('span');
-    label.className = 'audio-time';
-    label.textContent = formatClockShort(new Date(clip.startTime));
-
-    const audio = document.createElement('audio');
-    audio.controls = true;
-    audio.src = url;
-    audio.preload = 'none';
-
-    li.append(label, audio);
-    el.detailAudioList.appendChild(li);
+    const chip = document.createElement('li');
+    chip.textContent = formatClock(eventTime);
+    chip.addEventListener('click', () => playClipAt(clips, eventTime));
+    el.detailEventList.appendChild(chip);
   }
 }
 
