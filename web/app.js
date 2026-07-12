@@ -42,6 +42,11 @@ function formatDayTime(date) {
   return `${date.getMonth() + 1}/${date.getDate()}(${WEEKDAYS[date.getDay()]}) ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
+function formatBuildDate(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 function formatDuration(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(totalSeconds / 3600);
@@ -188,6 +193,7 @@ const el = {
   viewDetail: document.getElementById('view-detail'),
 
   idleClock: document.getElementById('idle-clock'),
+  versionInfo: document.getElementById('version-info'),
   autoStopLabel: document.getElementById('auto-stop-label'),
   autoStopMinus: document.getElementById('auto-stop-minus'),
   autoStopPlus: document.getElementById('auto-stop-plus'),
@@ -801,6 +807,14 @@ applyBrightness();
 showView(el.viewIdle);
 tick();
 setInterval(tick, 1000);
+
+fetch('version.json', { cache: 'no-store' })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((data) => {
+    if (!data) return;
+    el.versionInfo.textContent = `v${data.version} · ${formatBuildDate(data.builtAt)} 업데이트`;
+  })
+  .catch(() => {});
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
